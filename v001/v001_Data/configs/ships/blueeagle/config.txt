@@ -1,0 +1,137 @@
+//Configuration file for the UTC' flagship "Blue Eagle"
+
+>ship
+	vc3 size = 0.50, 0.50, 0.50
+	vc3 centerofmass = 0.00, 0.00, 0.00
+	f32 mass = 750000
+<
+
+>rcs
+	prf mesh = prefs/rcs/big_rcs
+	f32 thrust = 5000
+	f32 angular_limitation = .5
+	f32 isp = 500
+	vc3*16-positions = 
+	   0,  50,-400
+	   0,  50,-410
+	   0, -50,-400
+	   0, -50,-410
+	   0,  60, 350
+	   0,  60, 360
+	   0, -50, 350
+	   0, -50, 360
+	 130,   0,-400
+	 130,   0,-410
+	-130,   0,-400
+	-130,   0,-410
+	 100,   0, 390
+	 100,   0, 400
+	-100,   0, 390
+	-100,   0, 400
+	rot*16-orientations = 
+	   0,   0,  90
+	   0,   0,  90
+	   0,   0, -90
+	   0,   0, -90
+	   0,   0,  90
+	   0,   0,  90
+	   0,   0, -90
+	   0,   0, -90
+	   0,  90,   0
+	   0,  90,   0
+	   0, -90,   0
+	   0, -90,   0
+	   0,  90,   0
+	   0,  90,   0
+	   0, -90,   0
+	   0, -90,   0
+<
+	
+>player
+	vc3 cam_pos = 0.0, -200.0, 1200.0
+	rot cam_rot = 0.0, 0.0, 0.0
+<
+	
+>turr-main
+	snt hp = 100
+	f32 mass = 100
+
+	f32 horizontal_rotating_rate = 10 // °/s
+	f32 vertical_rotating_rate = 10 // °/s
+	f32*2-vertical_range =
+	    -6							// in °
+	    70							// in °
+	vc3*4-positions = 
+	  37.0,  55.1, 121.0
+	 -37.0,  55.1, 121.0
+	  37.0, -60.0, 121.0
+	 -37.0, -60.0, 121.0
+	rot*4-rotations = 
+	 -90.0,   0.0,   0.0
+	 -90.0,   0.0,   0.0
+	  90.0,   0.0,   0.0
+	  90.0,   0.0,   0.0
+	vc3*3-barrels=
+	 -10.0,   3.9,   4.5
+	 -20.0,   0.0,   4.5
+	 -20.0,  -3.9,   4.5
+	prf source = prefs/weapons/organic_turret_3
+	snt ammunition = 20
+	f32 reload_speed = 1.5 // in s
+	f32 muzzle_velocity = 800 // in m/s
+	prf ammunition_source = prefs/ammunition/bullets/naval_artillery_bullet
+<
+
+>turr-sec
+	snt hp = 100
+	f32 mass = 100
+
+	f32 horizontal_rotating_rate = 10 // °/s
+	f32 vertical_rotating_rate = 10 // °/s
+	f32*2-vertical_range =
+	    -6							// in °
+	    70							// in °
+	vc3*16-positions = 
+	  37.0,  55.1,  50.0
+	 -37.0,  55.1,  50.0
+	  37.0, -60.0,  50.0
+	 -37.0, -60.0,  50.0
+	  37.0,  65.1,  50.0
+	 -37.0,  65.1,  50.0
+	  37.0, -70.0,  50.0
+	 -37.0, -70.0,  50.0
+	  37.0,  75.1,  50.0
+	 -37.0,  75.1,  50.0
+	  37.0, -80.0,  50.0
+	 -37.0, -80.0,  50.0
+	  37.0,  85.1,  50.0
+	 -37.0,  85.1,  50.0
+	  37.0, -90.0,  50.0
+	 -37.0, -90.0,  50.0
+	rot*16-rotations = 
+	   0.0,   0.0,   0.0
+	   0.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	   0.0,   0.0,   0.0
+	   0.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	   0.0,   0.0,   0.0
+	   0.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	   0.0,   0.0,   0.0
+	   0.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	 180.0,   0.0,   0.0
+	vc3*3-barrels=
+	 -10.0,   3.9,   4.5
+	 -20.0,   0.0,   4.5
+	 -20.0,  -3.9,   4.5
+	prf source = prefs/weapons/main_weapon
+	snt ammunition = 20
+	f32 reload_speed = 1.5 // in s
+	f32 muzzle_velocity = 800 // in m/s
+	prf ammunition_source = prefs/ammunition/bullets/naval_artillery_bullet
+<
