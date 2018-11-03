@@ -34,3 +34,4 @@
     * Ability to choose from multiple characters added
     * Console updated
     * Bug removed, which led of skipping the whole mission, once one goal was accomplished
+    * Map added
