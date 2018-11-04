@@ -15,7 +15,7 @@
     * ability to switch cameras added
     * console added
     * UI design improved
-    * *begin of implementing a in-game programming language*
+    * **begin of implementing a in-game programming language**
     * menu added
     * player data added
     * settings added
@@ -24,7 +24,7 @@
     * Console position can be adjusted
     * Customizable ammo
     * Can choose ammo now
-    *Can choose custom battles in the menu now
+    * Can choose custom battles in the menu now
 
 * ## -v0.1.1:
     * configs moved directly into the Game folder
@@ -35,3 +35,8 @@
     * Console updated
     * Bug removed, which led of skipping the whole mission, once one goal was accomplished
     * Map added
+    * Game can now be freezed
+    * Sound now generalized
+    * Player can be changed
+    * Targeting process, information and many other things accessible from selectors in the map view
+    * Reference system can now be changed, set to a position or locked to an object
