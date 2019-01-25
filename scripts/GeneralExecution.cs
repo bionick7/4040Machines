@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+﻿using FileManagement;
 using UnityEngine;
 using NMS.OS;
 
@@ -11,23 +11,18 @@ using NMS.OS;
 public class GeneralExecution : MonoBehaviour {
 
 	public bool ignore_player = true;
-
-	private DataStructure eternal_data;
-	private ConsoleBehaviour console;
-	private OperatingSystem os;
-	private ObjectiveTracker tracker;
-
-	public Dictionary<ushort, DataStructure> story;
-	public DataStructure [] conversations;
-	public short in_level_progress;
-	public short in_stage_progress = -1;
-	public bool current_done = false;
-
-	private GUIScript uiscript;
+	
+	public DataStructure eternal_data;
+	public ConsoleBehaviour console;
+	public OperatingSystem os;
 	public Loader loader;
 
-	public Dictionary<string, DestroyableTarget> single_targets = new Dictionary<string, DestroyableTarget>();
-	public Dictionary<string, Ship[]> squads = new Dictionary<string, Ship[]>();
+	public string battle_path;
+
+	private GUIScript uiscript;
+	private MapCore map_core;
+
+	public MissionCore mission_core;
 
 	private Camera ship_camera;
 	private Camera map_camera;
@@ -42,46 +37,80 @@ public class GeneralExecution : MonoBehaviour {
 		}
 	}
 
-	private void Awake () {
-		ship_camera = GameObject.Find("ShipCamera").GetComponent<Camera>();
-		if (ship_camera == null) Debug.LogError("NO ShipCamera");
-		map_camera = GameObject.Find("MapCamera").GetComponent<Camera>();
+	public static double TotalTime { get; private set; }
 
-		SceneData.canvas = GameObject.Find("Canvas").GetComponent<Canvas>();
-		SceneData.map_canvas = GameObject.Find("MapCanvas").GetComponent<Canvas>();
-		SceneData.console = console = SceneData.canvas.GetComponentInChildren<ConsoleBehaviour>();
-		SceneData.ship_camera = ship_camera;
-		SceneData.map_camera = map_camera;
-		SceneData.mapdrawer = GameObject.Find("Placeholder").GetComponent<MapDrawer>();
-		InMap = false;
-
-		if (Data.persistend.loader != null) {
-			Data.persistend.loader.LoadBattle();
-		}
-		SelfInit();
-		uiscript = GetComponent<GUIScript>();
-		SceneData.ui_script = uiscript;
-
-		MapView();
-		NextCommand();
+	/// <summary> Gets called from the Loader, before he is loading </summary>
+	public void PreLoading() {
+		loader = Globals.persistend.loader;
+		os = new OperatingSystem(null, SceneGlobals.Player);
+		mission_core = new MissionCore(console, loader);
 	}
 
-	private void SelfInit() {
-		SceneData.general = this;
-		os = new OperatingSystem(console);
-		tracker = new ObjectiveTracker();
+	private void NotLoadingRelated () {
+		// What we can do right away
+		SceneGlobals.Refresh();
+		SceneGlobals.main_canvas = GameObject.Find("MainCanvas").GetComponent<Canvas>();
+		SceneGlobals.map_canvas = GameObject.Find("MapCanvas").GetComponent<Canvas>();
+		SceneGlobals.permanent_canvas = GameObject.Find("PermanentCanvas").GetComponent<Canvas>();
+		SceneGlobals.map_drawer = Loader.EnsureComponent<MapDrawer>(gameObject);
+		SceneGlobals.general = this;
+
+		uiscript = Loader.EnsureComponent<GUIScript>(gameObject);
+		map_core = Loader.EnsureComponent<MapCore>(gameObject);
+		SceneGlobals.console = console = SceneGlobals.permanent_canvas.GetComponentInChildren<ConsoleBehaviour>();
+		console.Start_();
+		console.ConsolePos = ConsolePosition.lower;
+
+		// Configure the cameras
+		ship_camera = GameObject.Find("ShipCamera").GetComponent<Camera>();
+		if (ship_camera == null) Debug.LogError("NO ShipCamera");
+		ship_camera.farClipPlane = 1e9f;
+		Loader.EnsureComponent<CameraMovement>(ship_camera.gameObject);
+		map_camera = GameObject.Find("MapCamera").GetComponent<Camera>();
+		SceneGlobals.ship_camera = ship_camera;
+		SceneGlobals.map_camera = map_camera;
+
+		// Initialize the audio source
+		GameObject audiosource_object = new GameObject("Audio Source");
+		audiosource_object.transform.SetParent(ship_camera.transform);
+		Globals.audio = Loader.EnsureComponent<AudioManager>(audiosource_object);
+
+		// Get the map view manager
+		map_core.Start_();
+		SceneGlobals.map_core = map_core;
+
+		SceneGlobals.ui_script = uiscript;
+	}
+
+	/// <summary> Gets called on the beginning of the first frame after loading </summary>
+	public void PostLoading() {
+		InMap = true;
+		SceneGlobals.Paused = true;
+	}
+
+	private void Awake () {
+		NotLoadingRelated();
+		if (!SceneGlobals.is_save) {
+			PreLoading();
+			loader.attack_data = new AttackData(Vector3.forward, new Vector3(0, 100, -200));
+			loader.LoadEssentials();
+			loader.LoadObjects();
+			NextCommand();
+		}
+		PostLoading();
+
+		Debug.Log(DeveloppmentTools.LogIterable(SceneObject.TotObjectList));
 	}
 
 	/// <summary> Switches to Map View </summary>
 	private void MapView () {
 		map_camera.enabled = true;
 		map_camera.GetComponent<AudioListener>().enabled = true;
-
 		ship_camera.enabled = false;
 		ship_camera.GetComponent<AudioListener>().enabled = false;
 
-		SceneData.canvas.enabled = false;
-		SceneData.map_canvas.enabled = true;
+		SceneGlobals.main_canvas.enabled = false;
+		SceneGlobals.map_canvas.enabled = true;
 	}
 
 	/// <summary> Switches to Ship View </summary>
@@ -92,153 +121,76 @@ public class GeneralExecution : MonoBehaviour {
 		map_camera.enabled = false;
 		map_camera.GetComponent<AudioListener>().enabled = false;
 		
-		SceneData.canvas.enabled = true;
-		SceneData.map_canvas.enabled = false;
+		SceneGlobals.main_canvas.enabled = true;
+		SceneGlobals.map_canvas.enabled = false;
 	}
 
-	/// <summary>
-	///		Goes to the next command of the in-level events and triggers it
-	///		This should be called, if a specific event is accomplished
-	/// </summary>
+	/// <summary> Requests the next command to be executed </summary>
 	public void NextCommand () {
-		// Todo: Check if stage is a thing
-		in_stage_progress = (short) ((in_stage_progress + 1) % story [(ushort) in_level_progress].children.Count);
-		FileReader.FileLog(string.Format("STORY: Execute next command: {0} - {1}", in_level_progress, in_stage_progress));
-		DataStructure command_data = new List<DataStructure>(story [(ushort) in_level_progress].AllChildren)[in_stage_progress];
-		StoryCommand(command_data);
+		mission_core.NextCommand();
 	}
 
-	/// <summary>
-	///		Executes an event in the level once
-	/// </summary>
-	/// <param name="data"> The Datastructure containing the information about the event </param>
-	private void StoryCommand (DataStructure data) {
-		switch (data.Name) {
-		case "get conversation":
-			FileReader.FileLog("STORY: Begin Conversation");
-			ushort id = data.Get<ushort>("ID");
-			os.current_conversation = new Conversation(conversations [id-1], os) { Running = true };
-			os.ShowConsole();
-			break;
-		case "spawn":
-			foreach (string name in data.Get<string[]>("names")) {
-				loader.Spawn(data.Get<string>("type"), name);
-			}
-			NextCommand();
-			break;
-		case "objective":
-			// Todo: Check compleateness
-			Objectives obj_type; Target [] obj_targets;
-			string [] objective_specs = data.Get<string>("objective type").Split(' ');
-			// What to do with the target?
-			switch (objective_specs [0]) {
-			case "kill":
-				obj_type = Objectives.destroy;
-				break;
-			case "escort":
-				obj_type = Objectives.escort;
-				break;
-			case "hack":
-				obj_type = Objectives.hack;
-				break;
-			default:
-				obj_type = Objectives.none;
-				break;
-			}
-			string obj_name = data.Get<string>("target name");
-			// Which target is it?
-			switch (objective_specs [1]) {
-			case "squadron":
-				if (!squads.ContainsKey(obj_name)) os.ThrowError("no such sqadron " + obj_name); 
-				obj_targets = System.Array.ConvertAll(squads [obj_name], s => s.associated_target);
-				break;
-			case "target":
-				if (!single_targets.ContainsKey(obj_name)) os.ThrowError("no such target " + obj_name);
-				Target selected_target = single_targets[obj_name].Target;
-				obj_targets = new Target [1] { selected_target };
-				break;
-			default:
-				obj_targets = new Target[0];
-				break;
-			}
-			Objective objective = new Objective() { objective_type = obj_type, targets = obj_targets };
-			tracker.NewObjective(objective);
-			return;
-		case "goto":
-			in_level_progress = (short) (data.Get<ushort>("stage"));
-			in_stage_progress = -1;
-			NextCommand();
-			return;
-		case "finish mission":
-			bool won = data.Get<bool>("won");
-			Data.persistend.EndBattle(won, data.Get<bool>("progress") && won);
-			return;
+	/// <summary> Called if the game (un)pauses </summary>
+	/// <param name="pause"> If the game pauses or unpauses </param>
+	public void OnPause (bool pause) {
+		foreach (Ship ship in SceneGlobals.ship_collection) {
+			ship.OnPause(pause);
+		}
+		foreach (Missile missile in SceneGlobals.missile_collection) {
+			missile.OnPause(pause);
+		}
+		foreach (Explosion explosion in SceneGlobals.explosion_collection) {
+			explosion.OnPause(pause);
 		}
 	}
 
 	private void Update () {
 		os.Update();
-		tracker.Check();
-
+		mission_core.Update();
+		
 		if (!uiscript.Paused) {
-			foreach (IPhysicsObject obj in SceneData.physics_objects) {
-				//Debug.LogFormat(string.Format("{0} got {1} m/s", obj.ToString(), obj.Velocity));
-				obj.PhysicsUpdate(Time.deltaTime);
+			SceneGlobals.physics_objects.RemoveWhere(x => !x.Exists);
+
+			foreach (IPhysicsObject obj in SceneGlobals.physics_objects) {
+				try { obj.PhysicsUpdate(Time.deltaTime); } catch (MissingReferenceException) {; }
 			}
-		}
-	}
-}
+			
+			SceneGlobals.explosion_collection.RemoveWhere(exp => !exp.exists);
 
-public class ObjectiveTracker
-{
-	public Objective current_objective = Objective.none;
-	public bool [] done;
-
-	public void NewObjective (Objective obj) {
-		current_objective = obj;
-		done = new bool[obj.targets.Length];
-		for (int i = 0; i < done.Length; i++) done [i] = false;
-	}
-
-	public void Check () {
-		if (current_objective == Objective.none) return;
-		for (int i=0; i < done.Length; i++) {
-			if (!done [i]) {
-				Target t = current_objective.targets[i];
-				switch (current_objective.objective_type) {
-				case Objectives.destroy:
-					if (!t.Exists) done [i] = true;
-					break;
-				case Objectives.escort:
-					break;
-				case Objectives.hack:
-					break;
-				}
+			foreach (Explosion explosion in SceneGlobals.explosion_collection) {
+				explosion.Update(Time.deltaTime);
 			}
+
+			TotalTime += Time.deltaTime;			
 		}
-		if (System.Array.TrueForAll(done, x => x)) {
-			current_objective = Objective.none;
-			SceneData.general.NextCommand();
+
+		if (SceneGlobals.Player != null && !SceneGlobals.Player.Exists) {
+			EndBattle(false);
 		}
+	}
+
+	public void Save () {
+		LoadSaving.Save();
+	}
+
+	/// <summary> If one Battle (Scene) has ended </summary>
+	public void EndBattle (bool won) {
+		if (won) {
+			Globals.current_character.story_stage += Globals.progress_if_won;
+			Globals.current_character.Save();
+		} else {
+			FileReader.FileLog("GameOver", FileLogType.story);
+		}
+		Globals.progress_if_won = 0;
+		Globals.persistend.Back2Menu();
+	}
+
+	/// <summary> Can label things on GUI </summary>
+	private void OnGUI () {
+		// frames per second (FPS)
+		GUI.Label(new Rect(0,   0, 100, 100), (1f / Time.deltaTime).ToString());
+		GUI.Label(new Rect(0, 100, 100, 100), (Armor.thickness).ToString());
 	}
 }
 
-public struct Objective
-{
-	public Objectives objective_type;
-	public Target [] targets;
 
-	public static readonly Objective none = new Objective () { objective_type = Objectives.none, targets = new Target [0] };
-
-	public static bool operator == (Objective left, Objective right) {
-		return left.objective_type == right.objective_type && left.targets == right.targets;
-	}
-
-	public static bool operator != (Objective left, Objective right) {
-		return !(left == right);
-	}
-
-	public override string ToString () {
-		return string.Format("<Objective: {0}>", objective_type);
-	}
-}

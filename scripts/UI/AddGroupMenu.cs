@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 public class AddGroupMenu : MonoBehaviour {
 
-	private Dictionary<Button, Turret> turret_graphs= new Dictionary<Button, Turret>();
+	private Dictionary<TurretButton, Turret> turret_graphs = new Dictionary<TurretButton, Turret>();
 
 	private RectTransform rect;
 	private GUIScript gui_script;
@@ -38,26 +38,20 @@ public class AddGroupMenu : MonoBehaviour {
 	public bool Enabled {
 		get { return menu_enabled; }
 		set {
-			if (value) {
-				Init();
-			} else {
-				Exit();
-			}
+			if (value) Init();
+			else Exit();
 			menu_enabled = value;
 		}
 	}
 
 	private Vector2Int Middle {
-		get {
-			return new Vector2Int( Screen.width / 2, Screen.height / 2 );
-		}
+		get { return new Vector2Int( Screen.width / 2, Screen.height / 2 ); }
 	}
 
 	void Start () {
 		rect = GetComponent<RectTransform>();
-		GameObject player_obj = SceneObject.PlayerObj();
-		gui_script = SceneData.ui_script;
-		player_script = GameObject.FindGameObjectWithTag("Player").GetComponent<ShipControl>();
+		gui_script = SceneGlobals.ui_script;
+		player_script = SceneGlobals.Player.control_script;
 		source_button = GameObject.Find("turr_slide");
 		mask_transform = GetComponentInChildren<RectMask2D>().transform;
 		slider = GetComponentInChildren<Slider>();
@@ -69,9 +63,9 @@ public class AddGroupMenu : MonoBehaviour {
 	public void UpdatePositions () {
 		float pos_multiplyer = 300 / slider_ratio - 300;
 
-		List<Button> butt_list = new List<Button> (turret_graphs.Keys);
+		List<TurretButton> butt_list = new List<TurretButton> (turret_graphs.Keys);
 		for (int i=0; i < butt_list.Count; i++) {
-			Button button = butt_list[i];
+			TurretButton button = butt_list[i];
 			Vector3 init_pos = init_positions[i];
 			Vector3 plus_pos = new Vector3(0, slider.value * pos_multiplyer);
 			button.transform.position = init_pos + plus_pos;
@@ -81,7 +75,7 @@ public class AddGroupMenu : MonoBehaviour {
 	public void Finish () {
 		if (Edit) {
 			for (int i=0; i < group.Count; i++) {
-				group.TurretList[i].Group = TurretGroup.Trashbin;
+				group.TurretArray[i].Group = TurretGroup.Trashbin;
 			}
 			foreach (Turret turr in selected_turrets) {
 				turr.Group = group;
@@ -89,7 +83,7 @@ public class AddGroupMenu : MonoBehaviour {
 			group.name = name_input.text;
 		} else {
 			group = new TurretGroup(Target.None, selected_turrets.ToArray(), name_input.text) {
-				parentship = gui_script.player_ship
+				own_ship = SceneGlobals.Player
 			};
 			gui_script.AddTurretGroup(group);
 		}
@@ -124,7 +118,7 @@ public class AddGroupMenu : MonoBehaviour {
 				}
 			}
 
-			Button butt = button_object.GetComponent<Button>();
+			TurretButton butt = button_object.GetComponent<TurretButton>();
 			turret_graphs.Add(butt, turret);
 			init_positions.Add(button_object.transform.position);
 		}
@@ -139,23 +133,19 @@ public class AddGroupMenu : MonoBehaviour {
 			}
 			name_input.text = group.name;
 		}
-
-		gui_script.Paused = true;
 	}
 
 	void Exit () {
-		turret_graphs = new Dictionary<Button, Turret>();
+		turret_graphs = new Dictionary<TurretButton, Turret>();
 		init_positions = new List<Vector3>();
 
 		rect.position = new Vector3(200, -200);
-		gui_script.Paused = false;
-		gui_script.Click();
+		Globals.audio.UIPlay(UISound.soft_click);
+		gui_script.ButtonLabelUpdate();
 	}
 
 	void Update () {
-		if (Enabled) {
-			UpdatePositions();
-		}
+		if (Enabled) UpdatePositions();
 	}
 
 	// Button functions

@@ -138,7 +138,6 @@ namespace NMS
 			case "Fl":
 				byte [] dataf = value == null ? new byte [2] { 0x00, 0x00 } : Converter.String2Scalar(value, false);
 				dict.Add(name, new Single(VType.floating, dataf));
-				Debug.Log(Converter.ShowBinary(dataf));
 				break;
 			case "St":
 				byte [] datas = value == null ? new byte [1] { 0x00 } : Converter.DisectString(value);
@@ -211,7 +210,7 @@ namespace NMS
 			uint result = 0u;
 			for (int i = str.Length - 1; i >= 0; i--) {
 				if (str [i] < 48 || str [i] > 57) {
-					Data.current_os.ThrowError("Inexpected character: " + str [i]);
+					Globals.current_os.ThrowError("Inexpected character: " + str [i]);
 				}
 				ushort mantissa = (ushort)(str[i] - 48);
 				ulong power = 1ul;

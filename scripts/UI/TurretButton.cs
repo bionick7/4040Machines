@@ -6,21 +6,54 @@ using UnityEngine.EventSystems;
  * This script goes on the buttons on the left side, representing the turrets or turretgroups of the ship
  */
 
-[RequireComponent(typeof(Button))]
-public class TurretButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+[RequireComponent(typeof(Image))]
+public class TurretButton : MonoBehaviour, 
+IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler ,IPointerUpHandler
 {
 	private GUIScript script;
 	private AddGroupMenu script1;
 
 	private uint number;
-	private Button button;
 	private Image img;
+	private RectTransform own_rect_transform;
+	private RectTransform reload_indicator;
+
+	private bool hover_ = false;
+	public bool Hover {
+		get {
+			return hover_;
+		}
+		set {
+			if (!in_add_menu) {
+				if (single_turret) {
+					script.TurretButtonHover(number, value);
+				} else {
+					script.GroupButtonHover(number, value);
+				}
+			}
+			hover_ = value;
+		}
+	}
+
 	private Turret own_turret;
 	private TurretGroup own_group;
 	private bool single_turret = false;
+	private string Name {
+		get {
+			if (single_turret) return own_turret.name;
+			return own_group.name;
+		}
+	}
 
 	public bool in_add_menu;
-	private AudioSource audiosrc;
+
+	private Color Idle {
+		get { return on ? new Color(.8f, .8f, .8f) : Color.white; }
+	}	
+	private readonly Color hover = new Color(.8f, .8f, .8f);
+	private readonly Color clicked = new Color(.81f, .68f, .68f);
+
+	private bool dragging = false;
 
 	/// <summary> The turret corresponding to this button, if the button is referring to a turret </summary>
 	public Turret OwnTurret {
@@ -70,12 +103,9 @@ public class TurretButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHan
 
 	/// <summary> True if the button is currently selected? </summary>
 	public bool On {
-		get {
-			return on;
-		}
+		get { return on; }
 		set {
 			on = value;
-			img.color = value ? new Color(.8f, .8f, .8f) : Color.white;
 			if (in_add_menu) {
 				if (value) {
 					script1.selected_turrets.Add(OwnTurret);
@@ -100,8 +130,37 @@ public class TurretButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHan
 		}
 	}
 
-	private void Start () {
-		audiosrc = GetComponent<AudioSource>();
+	private void Start () {	}
+
+	private void Update () {
+		if (reload_indicator != null) {
+			if (single_turret) {
+				reload_indicator.sizeDelta = new Vector2((1 - Mathf.Min(1, own_turret.delta_time / own_turret.reload_speed)) * 100, 1);
+			} else {
+				reload_indicator.sizeDelta = Vector2.zero;
+			}
+		}
+
+		if (dragging) {
+			if (Input.GetMouseButtonUp(0)) {
+				PinLabel.Dragging = dragging = false;
+				PinLabel.Active.Context = PinLabel.PinContext.none;
+				if (PinLabel.Active.Object == null) {
+
+				} else {
+					if (single_turret) {
+
+					} else {
+						OwnTurretGroup.target = PinLabel.Active.Object;
+					}
+				}
+			}
+		}
+		if (Hover) {
+			if (!own_rect_transform.rect.Contains(Input.mousePosition - own_rect_transform.position)) {
+				Hover = false;
+			}
+		}
 	}
 
 	/// <summary>
@@ -119,7 +178,8 @@ public class TurretButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHan
 		gameObject.name = turret.name;
 
 		img = GetComponent<Image>();
-		button = GetComponent<Button>();
+		own_rect_transform = GetComponent<RectTransform>();
+		reload_indicator = transform.GetChild(2).GetComponent<RectTransform>();
 		OwnTurret = turret;
 
 		SetUp();
@@ -140,7 +200,8 @@ public class TurretButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHan
 		gameObject.name = group.name;
 
 		img = GetComponent<Image>();
-		button = GetComponent<Button>();
+		own_rect_transform = GetComponent<RectTransform>();
+		reload_indicator = transform.GetChild(2).GetComponent<RectTransform>();
 		OwnTurretGroup = group;
 
 		SetUp();
@@ -159,7 +220,8 @@ public class TurretButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHan
 		in_add_menu = true;
 
 		img = GetComponent<Image>();
-		button = GetComponent<Button>();
+		own_rect_transform = GetComponent<RectTransform>();
+		reload_indicator = transform.GetChild(2).GetComponent<RectTransform>();
 		OwnTurret = turret;
 
 		SetUp();
@@ -167,51 +229,50 @@ public class TurretButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHan
 
 	/// <summary> Updates ammunition text </summary>
 	public void AmmoUpdate () {
-		uint ammo = single_turret ? OwnTurret.ammo_count : OwnTurretGroup.Ammunition;
+		uint ammo = single_turret ? OwnTurret.Ammunition : OwnTurretGroup.Ammunition;
 		transform.GetChild(1).GetComponent<Text>().text = ammo.ToString();
 	}
 
 	///<summary> Updates the name label </summary>
 	public void LabelUpdate () {
-		transform.GetChild(0).GetComponent<Text>().text = name;
+		transform.GetChild(0).GetComponent<Text>().text = Name;
 	}
 
 	/// <summary> Sets up everything (nearly) non dependable on initialized values </summary>
 	void SetUp () {
-		string name = single_turret? OwnTurret.name: OwnTurretGroup.name;
-		gameObject.name = name;
-		transform.GetChild(0).GetComponent<Text>().text = name;
+		gameObject.name = Name;
+		transform.GetChild(0).GetComponent<Text>().text = Name;
 
 		AmmoUpdate();
 	}
 
 	/// <summary> Is called, when the cursor enters the button </summary>
 	public void OnPointerEnter(PointerEventData data) {
-		if (!in_add_menu) {
-			if (single_turret) {
-				script.TurretButtonHover(number, true);
-			} else {
-				script.GroupButtonHover(number, true);
-			}
-		}
+		Hover = true;
+		img.color = hover;
 	}
 
 	/// <summary> Is called, when the cursor exits the button </summary>
 	public void OnPointerExit(PointerEventData data) {
-		if (!in_add_menu) {
-			if (single_turret) {
-				script.TurretButtonHover(number, false);
-			} else {
-				script.GroupButtonHover(number, false);
-			}
+		Hover = false;
+		img.color = Idle;
+	}
+
+	/// <summary> Is called, when clicked </summary>
+	public void OnPointerUp(PointerEventData data) {
+		if (single_turret & Hover) {
+			On = !On;
+			Globals.audio.UIPlay(UISound.dump_click);
+			img.color = clicked;
 		}
 	}
 
 	/// <summary> Is called, when clicked </summary>
-	public void OnPointerClick(PointerEventData data) {
-		if (single_turret) {
-			On = !On;
-			audiosrc.Play();
+	public void OnPointerDown(PointerEventData data) {
+		if (data.button == PointerEventData.InputButton.Left) {
+			PinLabel.Active.Context = PinLabel.PinContext.turret;
+			PinLabel.Dragging = dragging = true;
 		}
+		img.color = hover;
 	}
 }

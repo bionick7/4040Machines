@@ -6,28 +6,24 @@ public class ConsoleExpander : MonoBehaviour
 	public Sprite down;
 	public Sprite up;
 
+	private ConsoleBehaviour console;
 	private Image img;
-	private GUIScript ui_script;
 
 	private bool _on;
 	public bool On {
-		get {
-			return _on;
-		}
+		get { return _on; }
 		set {
 			img.sprite = value ? up : down;
-			ui_script.ConsolePos = value ? ConsolePosition.lower : ConsolePosition.shown;
+			console.ConsolePos = value ? ConsolePosition.lower : ConsolePosition.shown;
 			_on = value;
 		}
 	}
 
 	private void Start () {
 		img = Loader.EnsureComponent<Image>(gameObject);
-		ui_script = SceneData.ui_script;
-		_on = ui_script.ConsolePos != ConsolePosition.lower;
+		console = GetComponentInParent<ConsoleBehaviour>();
+		_on = console.ConsolePos != ConsolePosition.lower;
 	}
-
-
 
 	public void OnClick () {
 		On = !On;

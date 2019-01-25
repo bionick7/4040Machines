@@ -1,12 +1,12 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
+using FileManagement;
 
-/*
+/* ==========================================================================================================
  * This script is ment to go on every active ship, regardless if it is controlled by a player or by AI.
  * It controlls the thrust, maneuvering, the weaponnery and the missiles of a ship and gives Data for the UI.
  * All effects of dammage or losing of other parts are managed here
- */
+ * ========================================================================================================== */
 
 public class ShipControl : MonoBehaviour {
 
@@ -22,17 +22,24 @@ public class ShipControl : MonoBehaviour {
 	public Dictionary<string, Turret []> turrets;
 
 	//Rcs Strength
+	/// <remarks> kN </remarks>
 	public Vector3 [] trans_strength = new Vector3[2] { Vector3.zero, Vector3.zero };
+	/// <remarks> kN </remarks>
 	public Vector3 [] torque_strength = new Vector3[2] { Vector3.zero, Vector3.zero };
 
 	/// <summary> The current target of the agent </summary>
     public Target target;
+	public IAimable turret_aim;
 	public Ship myship;
 	public PartsCollection parts;
+	public LowLevelAI ai_low;
 
-	//PRIVATE VARIABELS
-	//------------------
+	public PointTo pt_following = PointTo.none;
+
 	public bool shooting;
+	public bool torque_player;
+	public bool rcs_thrust_player;
+	public bool engine_thrust_player = false;
 
     //Unity components
 	private Animator anim;
@@ -43,9 +50,9 @@ public class ShipControl : MonoBehaviour {
 	public Vector3 inp_torque_vec = Vector3.zero;
 
 	/// <summary> Where the turrets are aimed at </summary>
-	public List<TurretGroup> turret_aims = new List<TurretGroup>();
+	public List<TurretGroup> turretgroup_list = new List<TurretGroup>();
 
-	//Ammount of fuel used per frame
+	/// <summary> Ammount of fuel used per second by one port at full throttle</summary>
 	private float d_fuel_rcs;
 
 	private bool turn_around;
@@ -56,7 +63,7 @@ public class ShipControl : MonoBehaviour {
 		target = Target.None;
 		
         //fuel
-        d_fuel_rcs = thrust * Time.fixedDeltaTime / (RCS_ISP * 9.81f); // per s
+        d_fuel_rcs = thrust * 1f / (RCS_ISP * 9.81f); // per s
 
 		myship.CalculateRadius();
 		parts = myship.Parts;
@@ -65,17 +72,17 @@ public class ShipControl : MonoBehaviour {
 
     ///<summary> Starts or stops regular shooting </summary>
 	public void Trigger_Shooting (bool start) {
+		if (SceneGlobals.general.InMap) return;
 		foreach (Weapon weapon in parts.GetAll<Weapon>()) {
 			weapon.Trigger_Shooting(start);
 		}
 	}
 
-    //Every physics update
+    // Every physics update
 	private void FixedUpdate () {
         //Controls RCS thrust
-        if (myship.RCSFuel > 0)
-        {
-
+		if (SceneGlobals.Paused) goto PAUSEDRUNNTIME;
+		if (myship.HasRCSFuel) {
 			Vector3 torque_vec = new Vector3 (inp_torque_vec.x * (inp_torque_vec.x > 0? torque_strength[0].x: torque_strength[1].x),
 											  inp_torque_vec.y * (inp_torque_vec.y > 0? torque_strength[0].y: torque_strength[1].y),
 											  inp_torque_vec.z * (inp_torque_vec.z > 0? torque_strength[0].z: torque_strength[1].z));
@@ -85,57 +92,34 @@ public class ShipControl : MonoBehaviour {
 
 			torque_vec /= (float) myship.Mass;
 
-			//	PROVISORESCH
-			myship.RCSFuel -= d_fuel_rcs * (inp_thrust_vec.magnitude + inp_torque_vec.magnitude);
+			float sigm_thrust = inp_thrust_vec.x + inp_thrust_vec.y + inp_thrust_vec.z + inp_torque_vec.x + inp_torque_vec.y + inp_torque_vec.z;
+			myship.DrainRCSFuel(d_fuel_rcs * sigm_thrust * Time.fixedDeltaTime);
 
+			//Debug.Log(thrust_vec);
 			myship.Torque(torque_vec);
-            myship.Push(myship.Orientation * thrust_vec);
-        }
-        else
-        {
-            inp_thrust_vec = Vector3.zero;
-            inp_torque_vec = Vector3.zero;
-        }
-
-		foreach (MissileLauncher launcher in parts.GetAll<MissileLauncher>()) {
-			foreach (Missile missile in launcher.Flying) {
-				missile.PhysicsUpdate();
-			}
+			myship.Push(myship.Orientation * thrust_vec);
+				
+		} else {
+			inp_thrust_vec = Vector3.zero;
+			inp_torque_vec = Vector3.zero;
 		}
+
+		PAUSEDRUNNTIME:;
 	}
 
 	public void KillVelocity () {
-		inp_torque_vec = HandyTools.CutVector(myship.AngularVelocity * -20f);
+		inp_torque_vec = Navigation.CutVector(myship.AngularVelocity * -20f);
 	}
 
     //Every frame
 	private void Update () {
-		if (myship.Position.sqrMagnitude > 100000000) {
-			turn_around = true;
-		}
-		velocity_to_center = Vector3.Dot(myship.Velocity.normalized, Vector3.zero - myship.Position);
-		if (myship.Velocity.magnitude > 50 && velocity_to_center < 0) {
-			myship.Throttle = 0;
-		}
-		foreach (TurretGroup group in turret_aims) {
-			group.Update();
+		if (SceneGlobals.Paused) goto PAUSEDRUNNTIME;
+		foreach (TurretGroup group in myship.TurretGroups) {
 			group.Aim();
 		}
 
+		PAUSEDRUNNTIME:
 		myship.Update();
-
-		if (turn_around) {
-			if (velocity_to_center < 5) {
-				if (Vector3.Angle(transform.forward, Vector3.zero - myship.Position) < 5) {
-					myship.Throttle = 1;
-				} else {
-					inp_torque_vec = RotateTowards(Vector3.zero - myship.Position);
-				}
-			} else {
-				myship.Throttle = 0;
-				turn_around = false;
-			}
-		}
 	}
 
 	/// <summary>
@@ -150,42 +134,52 @@ public class ShipControl : MonoBehaviour {
 		}
 	}
 
-	/// <summary>
-	///		Rotates towards a given target
-	/// </summary>
-	/// <param name="tgt"> The position to rotate to </param>
-	public Vector3 RotateTowards (Vector3 tgt_direction) {
-		Vector3 rot_vec = new Vector3();
-		Vector3 fore = transform.forward;
-		Vector3 angvel = myship.AngularVelocity;
-
-		float velocity_multiplyer = 100f;
-
-		Quaternion rot = Quaternion.Euler(myship.AngularVelocity * -velocity_multiplyer);
-		Vector3 direction = rot * tgt_direction;
-		Vector3 diff_vector = (direction.normalized - fore);
-		Vector3 pure_diff = Quaternion.Inverse(transform.rotation) * diff_vector;
-
-		// pitch (x)
-		float y_diff = pure_diff.y;
-		float pitch_multiplyer = -y_diff / Mathf.Abs(y_diff);
-		if (angvel.x * pitch_multiplyer > .15f) { return Vector3.zero; }
-		rot_vec.x = pitch_multiplyer;
-		
-		// yaw (y)
-		float x_diff = pure_diff.x;
-		float yaw_multiplyer = x_diff / Mathf.Abs(x_diff);
-		if (angvel.y * yaw_multiplyer > .15f) { return Vector3.zero; }
-		rot_vec.y = yaw_multiplyer;
-
-		return rot_vec;
+	/// <summary> The point, where to aim, to hit an object </summary>
+	/// <param name="weapon"> The gun to aim </param>
+	/// <param name="tgt"> The target to shoot </param>
+	/// <returns> A Point in 3D-Space </returns>
+	public Vector3 Predicted (Weapon weapon, Vector3 tgt_pos, Vector3 tgt_vel) {
+		float bullet_speed = weapon.BulletSpeed;
+		Vector3 predicted_point = tgt_pos - (myship.Velocity - tgt_vel) / bullet_speed * Vector3.Distance(weapon.Position, tgt_pos);
+		return predicted_point;
 	}
 
-	public void OnDrawGizmos () {
-		//Gizmos.DrawWireSphere(myship.Position, myship.radius);
+	/// <summary> The point, where to aim, to hit an object </summary>
+	/// <param name="weapon"> The gun to aim </param>
+	/// <param name="tgt"> The target to shoot </param>
+	/// <returns> A Point in 3D-Space </returns>
+	public Vector3 Predicted (Turret weapon, Vector3 tgt_pos, Vector3 tgt_vel) {
+		float bullet_speed = weapon.muzzle_velocity;
+		Vector3 predicted_point = tgt_pos - (myship.Velocity - tgt_vel) / bullet_speed * Vector3.Distance(weapon.Position, tgt_pos);
+		return predicted_point;
 	}
 
-	public void OnGUI () {
-		GUI.Label(new Rect(0, 100, 100, 100), velocity_to_center.ToString());
+	/// <summary> Sets current ship as player </summary>
+	public void SetAsPlayer () {
+		gameObject.tag = "Player";
+		FileReader.FileLog("Changed/Initialized Player", FileLogType.runntime);
+		var new_control = Loader.EnsureComponent<PlayerControl> (gameObject);
+		SceneGlobals.ReferenceSystem = new ReferenceSystem(myship);
+		SceneGlobals.ReferenceSystem.Update();
+		if (GetComponent<HighLevelAI>() != null)
+			GetComponent<HighLevelAI>().enabled = true;
+
+		if (SceneGlobals.Player != null) {
+			var old_control = SceneGlobals.Player.Object.GetComponent<PlayerControl>();
+			new_control.positions = old_control.positions;
+			new_control.rotations = old_control.rotations;
+			new_control.free_rotation = old_control.free_rotation;
+			Destroy(old_control);
+			GameObject player_obj = SceneGlobals.Player.Object;
+			if (player_obj.GetComponent<HighLevelAI>() != null)
+				player_obj.GetComponent<HighLevelAI>().enabled = true;
+			if (player_obj.GetComponent<AudioSource>() != null)
+			player_obj.tag = "Untagged";
+		} else {
+			DataStructure data = DataStructure.Load(myship.config_path, "data", null).GetChild("player");
+			new_control.positions = data.Get<Vector3[]>("cam pos");
+			new_control.rotations = data.Get<Quaternion[]>("cam rot");
+			new_control.free_rotation = data.Get<bool[]>("free rotate");
+		}
 	}
 }

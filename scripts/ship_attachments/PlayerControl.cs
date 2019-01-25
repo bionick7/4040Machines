@@ -1,5 +1,9 @@
 ﻿using UnityEngine;
-using System.Collections.Generic;
+
+/* =================================================================
+ * This is the script, where the inputs are processed. 
+ * Until now, the inputs are predefined
+ * ================================================================= */
 
 public class PlayerControl : MonoBehaviour {
 
@@ -10,10 +14,6 @@ public class PlayerControl : MonoBehaviour {
 	private ShipControl control_script;
 	private GUIScript UIScript;
 
-	private AudioSource audio_src;
-
-	private AudioClip camera_switch;
-
 	private int act_cam_num = 0;
 	private float act_thrust;
 	private float act_angular;
@@ -22,29 +22,32 @@ public class PlayerControl : MonoBehaviour {
 	private Ship ship;
 
 	private MapCameraMouvement mapcam_mv;
+	private KeyBindingCollection keys;
 
 	private void Start () {
-		camera_switch = Resources.Load<AudioClip>("sounds/camera_switch");
-		audio_src = GetComponent<AudioSource>();
-
 		control_script = GetComponent<ShipControl>();
-		UIScript = SceneData.ui_script;
+		UIScript = SceneGlobals.ui_script;
 
 		ship = control_script.myship;
 		cam = GameObject.Find("ShipCamera").GetComponent<Camera>();
-		mapcam_mv = SceneData.map_camera.GetComponent<MapCameraMouvement>();
+		mapcam_mv = SceneGlobals.map_camera.GetComponent<MapCameraMouvement>();
 
 		act_thrust = 1;
 		act_angular = 1;
 
 		Switch_Camera(act_cam_num);
+		keys = Globals.bindings;
 	}
 
+	/// <summary> Fine tune the rcs engines, s that they don't have to run on full throttle </summary>
+	/// <param name="multiplyer"> The multiplyer, to regulate the RCS. must be between 0 and 1 </param>
 	public void FineTune(float multiplyer) {
 		act_thrust = multiplyer;
 		act_angular = multiplyer;
 	}
 
+	/// <summary> Switches the camera in Shipview. </summary>
+	/// <param name="cam_setting"> The cameras are labelled from 0 to some number. Indicate the label </param>
 	public void Switch_Camera (int cam_setting){
 		cam.transform.SetParent(null);
 		for (int i = 0; i < positions.Length; i++) {
@@ -57,81 +60,114 @@ public class PlayerControl : MonoBehaviour {
 		cam.transform.SetParent(transform, true);
 	}
 
+	/// <summary> Steering functions </summary>
 	private void Steering () {
 		float x_force=0, y_force=0, z_force=0, pitch_force=0, yaw_force=0, roll_force=0;
 		
-		if (Input.GetKey(KeyCode.A)){
-			pitch_force = -act_angular;
-		}
-		if (Input.GetKey(KeyCode.D)){
+		// Rotation
+		if (keys.pitch_down.IsPressed()){
 			pitch_force = act_angular;
 		}
-		if (Input.GetKey(KeyCode.W)){
+		if (keys.pitch_up.IsPressed()){
+			pitch_force = -act_angular;
+		}
+		if (keys.yaw_right.IsPressed()){
 			yaw_force = act_angular;
 		}
-		if (Input.GetKey(KeyCode.S)){
+		if (keys.yaw_left.IsPressed()){
 			yaw_force = -act_angular;
 		}
-		if (Input.GetKey(KeyCode.Q)){
-			roll_force = act_angular;
-		}
-		if (Input.GetKey(KeyCode.E)){
+		if (keys.roll_right.IsPressed()){
 			roll_force = -act_angular;
 		}
+		if (keys.roll_left.IsPressed()){
+			roll_force = act_angular;
+		}
 
-		control_script.inp_torque_vec.Set(yaw_force, pitch_force, roll_force);
+		control_script.inp_torque_vec = new Vector3(pitch_force, yaw_force, roll_force);
+		control_script.torque_player = new Vector3(pitch_force, yaw_force, roll_force) != Vector3.zero;
 		
-		if (Input.GetKey(KeyCode.Keypad4)){
+		// Translation
+		if (keys.translate_left.IsPressed()){
 			x_force = -act_thrust;
 		}
-		if (Input.GetKey(KeyCode.Keypad6)){
+		if (keys.translate_right.IsPressed()){
 			x_force = act_thrust;
 		}
-		if (Input.GetKey(KeyCode.Keypad9)){
+		if (keys.translate_fore.IsPressed()){
 			z_force = act_thrust;
 		}
-		if (Input.GetKey(KeyCode.Keypad3)){
+		if (keys.translate_back.IsPressed()){
 			z_force = -act_thrust;
 		}
-		if (Input.GetKey(KeyCode.Keypad8)){
+		if (keys.translate_up.IsPressed()){
 			y_force = act_thrust;
 		}
-		if (Input.GetKey(KeyCode.Keypad2)){
+		if (keys.translate_down.IsPressed()){
 			y_force = -act_thrust;
 		}
-		control_script.inp_thrust_vec.Set(x_force, y_force, z_force);
 
-		if (Input.GetKey(KeyCode.Keypad7)){
+		control_script.inp_thrust_vec.Set(x_force, y_force, z_force);
+		control_script.rcs_thrust_player = new Vector3(x_force, y_force, z_force) != Vector3.zero;
+
+		// Engine thrust
+		if (keys.increase_throttle.IsPressed()){
 			ship.Throttle = Mathf.Min(1, ship.Throttle + .01f);
+			ship.control_script.engine_thrust_player = true;
 		}
-		if (Input.GetKey(KeyCode.Keypad1)){
+		if (keys.decrease_throttle.IsPressed()){
 			ship.Throttle = Mathf.Max(0, ship.Throttle - .01f);
+			ship.control_script.engine_thrust_player = ship.Throttle > 0;
 		}
-		if (Input.GetKey(KeyCode.Keypad5)) {
+		if (keys.kill_rotation.IsPressed()) {
 			control_script.KillVelocity();
+			control_script.torque_player = true;
 		}
-		if (Input.GetKey(KeyCode.KeypadPlus)){
+		if (keys.throttle_max.IsPressed()){
+			ship.control_script.engine_thrust_player = true;
 			ship.Throttle = 1;
 		}
-		if (Input.GetKey(KeyCode.KeypadMinus)){
+		if (keys.throttle_min.IsPressed()){
+			ship.control_script.engine_thrust_player = false;
 			ship.Throttle = 0;
 		}
 	}
 
-	private void Actions() {
-		if (Input.GetKeyDown(KeyCode.Space)) {
+	/// <summary> Miscellangelous actions </summary>
+	private void Actions () {
+		// Shooting
+		if (keys.shoot.ISPressedDown()) {
 			control_script.Trigger_Shooting(true);
-			foreach (TurretGroup tg in control_script.turret_aims) {
+			foreach (TurretGroup tg in control_script.turretgroup_list) {
 				tg.ShootSafe();
 			}
 		}
 
-		if (Input.GetKeyUp(KeyCode.Space)) {
+		if (keys.shoot.ISUnPressed()) {
 			control_script.Trigger_Shooting(false);
 		}
 
-		if (Input.GetKeyDown(KeyCode.C)) {
-			audio_src.PlayOneShot(camera_switch);
+		// Fire missile
+		if (keys.fire_missile.ISPressedDown()) {
+			control_script.FireMissile();
+		}
+	}
+
+	/// <summary> Actions, that can be executed, while the game is paused </summary>
+	private void PauseActions () {
+		// Stop mouse following
+		if (keys.cancel_mouse_following.IsPressed()) {
+			UIScript.group_follows_cursor = false;
+		}
+
+		// Set dircetion via mouse
+		if (Input.GetMouseButtonDown(0) && (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))) {
+			UIScript.SetDirection();
+		}
+		
+		// Camera
+		if (keys.camera_switch.ISPressedDown()) {
+			Globals.audio.UIPlay(UISound.camera_switch);
 			bool is_shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
 			if (!is_shift) {
 				act_cam_num = (act_cam_num + 1) % positions.Length;
@@ -139,62 +175,49 @@ public class PlayerControl : MonoBehaviour {
 			Switch_Camera(act_cam_num);
 		}
 
-		if (Input.GetKeyDown(KeyCode.RightAlt)) {
-			control_script.FireMissile();
+		// Menu
+		if (keys.menu.ISPressedDown()) {
+			UIScript.ToggleMenu();
 		}
 
-		if (Input.GetKeyDown(KeyCode.KeypadEnter)) {
-			UIScript.group_follows_cursor = false;
+		// Pause
+		if (keys.pause.ISPressedDown()) {
+			UIScript.Paused = !UIScript.Paused;
 		}
 
-		if (Input.GetMouseButtonDown(0) && (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))) {
-			UIScript.SetDirection();
+		// Toggle map
+		if (keys.togglemap.ISPressedDown()) {
+			SceneGlobals.general.InMap = !SceneGlobals.general.InMap;
 		}
 	}
 
+	/// <summary> The camera mouvement in map view </summary>
 	private void CameraMouvement () {
+		if (SceneGlobals.in_console | !SceneGlobals.general.InMap) return;
 		Vector3 mouvement = Vector3.zero;
-		if (Input.GetKey(KeyCode.LeftArrow)) mouvement.x -= 1;
-		if (Input.GetKey(KeyCode.RightArrow)) mouvement.x += 1;
-		if (Input.GetKey(KeyCode.DownArrow)) mouvement.z -= 1;
-		if (Input.GetKey(KeyCode.UpArrow)) mouvement.z += 1;
-		if (Input.GetKey(KeyCode.PageUp)) mouvement.y += 1;
-		if (Input.GetKey(KeyCode.PageDown)) mouvement.y -= 1;
-		mapcam_mv.TunePivotPoint(mouvement);
-
+		if (keys.map_move_left.IsPressed()) mouvement.x -= 1;
+		if (keys.map_move_right.IsPressed()) mouvement.x += 1;
+		if (keys.map_move_back.IsPressed()) mouvement.z -= 1;
+		if (keys.map_move_fore.IsPressed()) mouvement.z += 1;
+		if (keys.map_move_up.IsPressed()) mouvement.y += 1;
+		if (keys.map_move_down.IsPressed()) mouvement.y -= 1;
+		if (mouvement != Vector3.zero)
+			mapcam_mv.TunePivotPoint(mouvement);
 	}
 
 	private void Update () {
-		if (Input.GetKeyDown(KeyCode.Escape)) {
-			UIScript.ToggleMenu();
+		if (!SceneGlobals.in_console) {
+			if (!UIScript.Paused) Actions();
+			PauseActions();
 		}
-		if (Input.GetKeyDown(KeyCode.P)) {
-			UIScript.Paused = !UIScript.Paused;
-		}
-		if (Input.GetKeyDown(KeyCode.M)) {
-			SceneData.general.InMap = !SceneData.general.InMap;
-		}
-		if (!SceneData.general.InMap) {
-			if (!UIScript.Paused && !SceneData.in_console) {
-				Actions();
-			}
-		} else {
+		if (SceneGlobals.general.InMap) {
 			CameraMouvement();
 		}
 	}
 
 	private void FixedUpdate () {
-		if (!UIScript.Paused && !SceneData.in_console) {
+		if (!UIScript.Paused && !SceneGlobals.in_console) {
 			Steering();
 		}
-	}
-
-	private void OnDestroy () {
-		Debug.Log("Game Over");
-		Data.persistend.EndBattle(false);
-	}
-
-	private void OnGUI () {
-		GUI.Label(new Rect(0, 0, 100, 100), (1f / Time.deltaTime).ToString());
 	}
 }

@@ -67,7 +67,7 @@ namespace NMS
 
 		public IValue GetIndex (uint index) {
 			if (index >= Length || index < 0) {
-				Data.current_os.ThrowError("Index out of range");
+				Globals.current_os.ThrowError("Index out of range");
 			}
 			byte [] bytes = new byte [Consts.sizes[Type]];
 			uint min = index * item_size, max = (index + 1u) * item_size;
@@ -88,10 +88,10 @@ namespace NMS
 
 		public void SetIndex (uint index, byte [] value) {
 			if (index >= Length || index < 0) {
-				Data.current_os.ThrowError("Index out of range");
+				Globals.current_os.ThrowError("Index out of range");
 			}
 			if (value.Length != item_size) {
-				Data.current_os.ThrowError("Does not match type");
+				Globals.current_os.ThrowError("Does not match type");
 			}
 			uint min = index * item_size, max = (index + 1u) * item_size;
 			uint i = 0u;
@@ -137,7 +137,7 @@ namespace NMS
 			Type = type;
 			Size = Consts.sizes [type];
 			if (value.Length != Size) {
-				Data.current_os.ThrowError("Does not match type");
+				Globals.current_os.ThrowError("Does not match type");
 				Value = new byte [Size];
 				goto END;
 			}
